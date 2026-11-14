@@ -241,7 +241,63 @@ def patch_main(file_path):
         else:
             print("[web-patch] Warning: fNb function target not found in main.js", file=sys.stderr)
 
+    # 6. WebSocket Transport & Background Stream Liveness (Fix background execution freeze)
+    ws_target = "this.options?.forceWebSocket??(a&&ij()))a=new l1a({url:this.wsUrl,csrfToken:()=>this.csrfToken,hostClientIdentity:gM,recordError:this.options?.recordError,"
+    ws_replace = "this.options?.forceWebSocket??(a&&ij()))a=window.__AG_TRANSPORT__=new l1a({url:this.wsUrl,csrfToken:()=>this.csrfToken,hostClientIdentity:gM,recordError:this.options?.recordError,"
+    if ws_target in content:
+        content = content.replace(ws_target, ws_replace, 1)
+        modified = True
+        print("[web-patch] Successfully patched window.__AG_TRANSPORT__ hook")
 
+    ctor_target = "constructor(a){this.options=a;this.wsPromise=this.ws=null;this.JSC$9267_activeStreams=new Map;this.inboundFrameSeq=0;this.probeSocket=null;this.hadOpened=!1}"
+    ctor_replace = "constructor(a){this.options=a;this.wsPromise=this.ws=null;this.JSC$9267_activeStreams=new Map;this.inboundFrameSeq=0;this.probeSocket=null;this.hadOpened=!1;this.lastFrameTime=Date.now()}reconnect(reason){try{if(this.ws){try{this.ws.close()}catch(_){}hM(this,this.ws);this.ws=null}}catch(_){}}"
+    if ctor_target in content:
+        content = content.replace(ctor_target, ctor_replace, 1)
+        modified = True
+        print("[web-patch] Successfully patched l1a.prototype.reconnect and lastFrameTime")
+
+    msg_target = "g.onmessage=q=>{this.probeSocket!==null&&this.probeSocket!==g||this.inboundFrameSeq++;"
+    msg_replace = "g.onmessage=q=>{this.lastFrameTime=Date.now();window.__AG_LAST_FRAME_TIME__=this.lastFrameTime;this.probeSocket!==null&&this.probeSocket!==g||this.inboundFrameSeq++;"
+    if msg_target in content:
+        content = content.replace(msg_target, msg_replace, 1)
+        modified = True
+        print("[web-patch] Successfully patched l1a frame timestamp recording")
+
+    jm_start = content.find("function jM(a,b){")
+    if jm_start != -1:
+        jm_end = content.find("function h1a(a,b){", jm_start)
+        if jm_end != -1:
+            old_jm = content[jm_start:jm_end]
+            if "2E3" in old_jm:
+                new_jm = (
+                    'function jM(a,b){var c=a.inboundFrameSeq;a.probeTimer=setTimeout(()=>{'
+                    'if(b.readyState!==WebSocket.OPEN)hM(a,b);else if(g1a(a,b))if(a.inboundFrameSeq!==c)jM(a,b);else{'
+                    'b.send(JSON.stringify({streamId:Je(),type:"ping"}));var e=a.inboundFrameSeq;a.probeTimer=setTimeout(()=>{'
+                    'b.readyState!==WebSocket.OPEN?hM(a,b):a.inboundFrameSeq!==e?jM(a,b):('
+                    'iM(a),a.options.recordError?.("websocket_liveness_probe_failed",Error("no frames for 25000ms and ping unanswered; closing socket")),'
+                    'b.close(),hM(a,b))},10E3)}else iM(a)},\n15E3)}'
+                )
+                content = content[:jm_start] + new_jm + content[jm_end:]
+                modified = True
+                print("[web-patch] Successfully relaxed jM liveness probe timeouts to 15s/10s")
+
+    hca_target = "e.signal.aborted||h(await g(new Promise(F=>setTimeout(F,1E3))));B=ue(b)"
+    hca_replace = "e.signal.aborted||h(await g(new Promise(F=>setTimeout(F,1E3))));B=ue(b);C=k;"
+    if hca_target in content:
+        content = content.replace(hca_target, hca_replace, 1)
+        modified = True
+        print("[web-patch] Successfully patched Hca state slice reset")
+
+    vka_target = "var l=(0,A.useRef)();l.current||(l.current=new vKa(b));"
+    vka_replace = (
+        "var l=(0,A.useRef)();l.current||(l.current=new vKa(b));"
+        "window.__AG_TRAJECTORY_STORE__=l.current;"
+        "window.__AG_RESYNC_TRAJECTORIES__=function(){try{if(window.__AG_TRAJECTORY_STORE__&&typeof window.__AG_TRAJECTORY_STORE__.setFactory==='function'){window.__AG_TRAJECTORY_STORE__.setFactory(window.__AG_TRAJECTORY_STORE__._factory)}}catch(_){}};"
+    )
+    if vka_target in content:
+        content = content.replace(vka_target, vka_replace, 1)
+        modified = True
+        print("[web-patch] Successfully patched trajectory store resync hook")
 
     if modified:
         with open(file_path, "w", encoding="utf-8") as f:

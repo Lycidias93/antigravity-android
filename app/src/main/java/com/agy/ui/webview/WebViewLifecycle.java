@@ -20,21 +20,24 @@ public final class WebViewLifecycle {
             webView.onResume();
             webView.resumeTimers();
             webView.evaluateJavascript(
-                    "(function(){ try { window.dispatchEvent(new CustomEvent('agy:host-resume')); } catch(e){} })();",
+                    "(function(){ try { window.__AG_HOST_RESUMED__ = Date.now(); window.dispatchEvent(new CustomEvent('agy:host-resume', { detail: { timestamp: Date.now() } })); if (typeof window.__AG_ON_HOST_RESUME__ === 'function') { window.__AG_ON_HOST_RESUME__(); } } catch(e){} })();",
                     null);
         } catch (Exception e) {
             Log.w(TAG, "failed to resume webView", e);
         }
     }
 
-    /** Pauses page callbacks and timers while the host activity is not visible. */
+    /** Pauses page callbacks while the host activity is not visible. */
     public static void pause(WebView webView) {
         if (webView == null) {
             return;
         }
         try {
             webView.onPause();
-            webView.pauseTimers();
+            // CRITICAL: Do NOT call webView.pauseTimers()!
+            // Antigravity AI tasks run autonomously in background under Foreground Service
+            // Partial WakeLock. Pausing JS timers halts WebSocket heartbeats and stream readers,
+            // causing completed background trajectories to get stuck in UI when returning to the app.
         } catch (Exception e) {
             Log.w(TAG, "failed to pause webView", e);
         }

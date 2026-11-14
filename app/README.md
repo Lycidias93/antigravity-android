@@ -61,3 +61,4 @@ graph TD
 - **Loopback Enforcement:** Internal servers bind strictly to `127.0.0.1`. Incoming connections from external Wi-Fi or mobile network interfaces are rejected immediately.
 - **Dynamic CSRF Tokens:** Every local HTTP request between the web layer and gateway validates dynamic runtime session tokens.
 - **Redaction Engine:** All exported Android logcat and file logs pass through automated filters scrubbing API keys and OAuth tokens.
+- **Background Execution Lifecycle (`WebViewLifecycle`):** When switching apps during autonomous coding tasks, `WebViewLifecycle.pause()` invokes `onPause()` to pause GPU rendering while explicitly avoiding `pauseTimers()`. This keeps loopback WebSocket streams and JS event readers active under the Foreground Service `PARTIAL_WAKE_LOCK`. On resume, `resume()` dispatches `agy:host-resume` to immediately sync UI state.
